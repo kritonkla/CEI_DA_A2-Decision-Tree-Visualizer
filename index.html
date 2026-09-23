@@ -174,26 +174,20 @@
   footer b{color:#c3d3ea;font-weight:600}
 
   @media (max-width:900px){
-    /* The desktop layout pins html/body to exactly 100% of the viewport height
-       and relies on each .col scrolling internally. On mobile we want the
-       page itself to grow and scroll, so the fixed height has to go — otherwise
-       content gets squeezed and visually overlaps (e.g. the footer). */
+    /*mobile layout compatibility*/
     html,body{height:auto}
     body{min-height:100dvh}
     main{grid-template-columns:1fr;padding:10px;gap:10px}
     .col{overflow:visible;min-height:0}
 
-    /* Bigger touch targets. 16px on selects stops iOS Safari's
-       auto-zoom-on-focus, which otherwise yanks the viewport around. */
     button{padding:9px 13px;font-size:13.5px}
     select{font-size:16px;padding:8px 9px}
     label.field b{font-size:12.5px}
     label.field b i{font-size:12.5px}
 
-    /* One control per row instead of a cramped 2-up grid. */
+    /* One control per row on mobile*/
     .grid2{grid-template-columns:1fr;gap:12px}
 
-    /* Table columns need room to breathe more than the eye needs speed here. */
     table{font-size:12px}
     th,td{padding:6px 8px}
   }
