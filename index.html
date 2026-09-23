@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>CART Binary Decision Tree — Step-by-Step Visualizer</title>
+<style>
+  :root{
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+    --bg:#0b0f16;
+    --panel:#121926;
+    --panel-2:#0f1622;
+    --line:#22304a;
+    --line-soft:#1a2436;
+    --txt:#e6edf7;
+    --muted:#8ba0bd;
+    --accent:#5eead4;
+    --accent-2:#f59e0b;
+    --c0:#60a5fa;
+    --c1:#f472b6;
+    --c2:#34d399;
+    --danger:#fb7185;
+  }
+  *,*::before,*::after{box-sizing:inherit}
+  html,body{height:100%}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--txt);
+    font-family:ui-sans-serif,"Inter","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:14px;
+    display:flex;
+    flex-direction:column;
+    min-height:100%;
+  }
+  header{
+    padding:14px 20px 12px;
+    border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#101828,#0b0f16);
+    flex:0 0 auto;
+  }
+  header h1{
+    margin:0 0 4px;
+    font-size:18px;
+    letter-spacing:.2px;
+    font-weight:650;
+  }
+  header h1 span{color:var(--accent)}
+  header p{margin:0;color:var(--muted);font-size:12.5px;line-height:1.5;max-width:110ch}
+  header code{background:#1b2637;padding:1px 5px;border-radius:4px;color:#cbd5e1;font-size:11.5px}
+
+  main{
+    flex:1 1 auto;
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:12px;
+    padding:12px;
+    min-height:0;
+  }
+  .col{
+    min-height:0;
+    overflow-y:auto;
+    overflow-x:hidden;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    padding-right:4px;
+    scrollbar-color:#2c3a55 transparent;
+  }
+  .card{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:12px;
+    flex:0 0 auto;
+  }
+  .card > h2{
+    margin:0 0 10px;
+    font-size:12px;
+    text-transform:uppercase;
+    letter-spacing:.11em;
+    color:var(--muted);
+    font-weight:650;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+  }
+  .tag{
+    font-size:10.5px;
+    letter-spacing:.04em;
+    text-transform:none;
+    color:#0b0f16;
+    background:var(--accent);
+    padding:2px 7px;
+    border-radius:999px;
+    font-weight:700;
+  }
+  .tag.warn{background:var(--accent-2)}
+  .tag.idle{background:#334155;color:#cbd5e1}
+
+  canvas{display:block;width:100%;border-radius:8px;background:var(--panel-2)}
+  #board{border:1px solid var(--line-soft);cursor:crosshair;touch-action:none}
+  #loss{border:1px solid var(--line-soft)}
+
+  .row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .row + .row{margin-top:8px}
+  .spacer{flex:1 1 auto}
+
+  button{
+    font:inherit;
+    font-size:12.5px;
+    color:var(--txt);
+    background:#1b2536;
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:6px 11px;
+    cursor:pointer;
+    transition:background .12s,border-color .12s,opacity .12s;
+  }
+  button:hover:not(:disabled){background:#243148;border-color:#33456b}
+  button:disabled{opacity:.42;cursor:not-allowed}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#06221d;font-weight:650}
+  button.primary:hover:not(:disabled){background:#7ff0dd}
+  button.amber{background:var(--accent-2);border-color:var(--accent-2);color:#2a1a00;font-weight:650}
+  button.amber:hover:not(:disabled){background:#fbbf24}
+  button.ghost{background:transparent}
+  button.active{outline:2px solid var(--accent);outline-offset:1px}
+
+  .chip{display:inline-flex;align-items:center;gap:6px}
+  .dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+
+  label.field{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--muted);min-width:0}
+  label.field b{font-weight:600;color:#c3d3ea;font-size:11.5px;display:flex;justify-content:space-between;gap:8px}
+  label.field b i{font-style:normal;color:var(--accent);font-variant-numeric:tabular-nums}
+  input[type=range]{width:100%;accent-color:var(--accent);margin:0}
+  select{
+    font:inherit;font-size:12.5px;background:#1b2536;color:var(--txt);
+    border:1px solid var(--line);border-radius:8px;padding:5px 8px;width:100%;
+  }
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+  .hint{color:var(--muted);font-size:11.5px;line-height:1.55;margin:8px 0 0}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:12px;margin:0}
+  .kv dt{color:var(--muted)}
+  .kv dd{margin:0;font-variant-numeric:tabular-nums}
+
+  .status{
+    background:var(--panel-2);border:1px solid var(--line-soft);border-radius:8px;
+    padding:9px 10px;font-size:12.5px;line-height:1.5;
+  }
+  .status .mono{font-variant-numeric:tabular-nums;color:var(--accent)}
+
+  table{width:100%;border-collapse:collapse;font-size:11.5px;font-variant-numeric:tabular-nums}
+  th,td{text-align:right;padding:4px 6px;border-bottom:1px solid var(--line-soft);white-space:nowrap}
+  th{color:var(--muted);font-weight:600;text-align:right;position:sticky;top:0;background:var(--panel)}
+  th:first-child,td:first-child{text-align:left}
+  tr.best td{background:rgba(94,234,212,.10);color:#a7f3e6}
+  .scrollx{overflow:auto;max-height:190px;border:1px solid var(--line-soft);border-radius:8px}
+  .treewrap{overflow:auto;border:1px solid var(--line-soft);border-radius:8px;background:var(--panel-2);padding:6px}
+  svg text{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+  footer{
+    flex:0 0 auto;
+    border-top:1px solid var(--line);
+    padding:8px 20px;
+    display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;justify-content:space-between;
+    font-size:11.5px;color:var(--muted);
+    background:#0d1320;
+  }
+  footer b{color:#c3d3ea;font-weight:600}
+
+  @media (max-width:900px){
+    main{grid-template-columns:1fr}
+    .col{overflow:visible}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>CART <span>Binary Decision Tree</span> — Greedy Recursive Partitioning</h1>
+  <p>
+    The tree grows one node per step (breadth-first). At each node the algorithm scans every candidate threshold on
+    both features, scores each split by impurity decrease
+    <code>ΔI = I(parent) − (n_L/n)·I(L) − (n_R/n)·I(R)</code>, and keeps the best one. A node becomes a leaf when it is
+    pure, too small, too deep, or when no split gains enough. The loss shown is the sample-weighted impurity of all
+    current leaves, which decreases monotonically as the tree grows.
+  </p>
+</header>
+
+<main>
+  <!-- ================= LEFT COLUMN ================= -->
+  <section class="col" id="colLeft">
+
+    <div class="card">
+      <h2>Data Canvas / Input <span class="tag idle" id="canvasTag">3 classes</span></h2>
+      <canvas id="board" width="900" height="640"></canvas>
+
+      <div class="row" style="margin-top:10px">
+        <span style="color:var(--muted);font-size:11.5px">Paint class:</span>
+        <button data-cls="0" class="clsBtn active chip"><i class="dot" style="background:var(--c0)"></i>A</button>
+        <button data-cls="1" class="clsBtn chip"><i class="dot" style="background:var(--c1)"></i>B</button>
+        <button data-cls="2" class="clsBtn chip"><i class="dot" style="background:var(--c2)"></i>C</button>
+        <button id="eraseBtn" class="ghost">Erase mode</button>
+        <span class="spacer"></span>
+        <button id="clearBtn" class="ghost">Clear all</button>
+      </div>
+
+      <div class="row">
+        <label class="field" style="flex:1 1 150px">
+          <b>Random dataset</b>
+          <select id="dataset">
+            <option value="blobs">Gaussian blobs</option>
+            <option value="xor">XOR quadrants</option>
+            <option value="rings">Rings</option>
+            <option value="stripes">Diagonal stripes</option>
+            <option value="spiral">Spiral arms</option>
+          </select>
+        </label>
+        <label class="field" style="flex:1 1 150px">
+          <b>Points / class <i id="nppLbl">40</i></b>
+          <input type="range" id="npp" min="10" max="2048" step="5" value="40" />
+        </label>
+        <button id="genBtn" class="primary" style="align-self:flex-end">Generate</button>
+      </div>
+
+      <p class="hint">
+        Click empty space to add a point of the painted class · click a point (or right-click / Erase mode) to delete it.
+        Shaded regions are the tree's current predictions; white lines are the axis-aligned split boundaries, drawn only
+        inside the region each node owns.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>Hyperparameters &amp; Controls <span class="tag idle" id="phaseTag">idle</span></h2>
+
+      <div class="grid2">
+        <label class="field">
+          <b>Max depth <i id="mdLbl">5</i></b>
+          <input type="range" id="maxDepth" min="1" max="128" step="1" value="5" />
+        </label>
+        <label class="field">
+          <b>Min samples to split <i id="msLbl">4</i></b>
+          <input type="range" id="minSplit" min="2" max="30" step="1" value="4" />
+        </label>
+        <label class="field">
+          <b>Min impurity decrease <i id="miLbl">0.000</i></b>
+          <input type="range" id="minGain" min="0" max="0.2" step="0.005" value="0" />
+        </label>
+        <label class="field">
+          <b>Candidate thresholds <i id="ctLbl">24</i></b>
+          <input type="range" id="nThresh" min="4" max="60" step="2" value="24" />
+        </label>
+        <label class="field">
+          <b>Impurity criterion</b>
+          <select id="criterion">
+            <option value="gini">Gini</option>
+            <option value="entropy">Entropy</option>
+          </select>
+        </label>
+        <label class="field">
+          <b>Autoplay delay <i id="spLbl">550 ms</i></b>
+          <input type="range" id="speed" min="80" max="1500" step="10" value="550" />
+        </label>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <button id="stepBtn" class="primary">▶ Step</button>
+        <button id="playBtn" class="amber">⏩ Play to convergence</button>
+        <button id="resetBtn" class="ghost">↺ Reset tree</button>
+      </div>
+
+      <div class="status" style="margin-top:10px" id="status">
+        Tree not built yet. Press <b>Step</b> to expand the root node.
+      </div>
+
+      <p class="hint">
+        Changing any hyperparameter or editing the data resets the tree, because the greedy split choices made so far
+        would no longer be valid under the new settings.
+      </p>
+    </div>
+  </section>
+
+  <!-- ================= RIGHT COLUMN ================= -->
+  <section class="col" id="colRight">
+
+    <div class="card">
+      <h2>Model State / Structure <span class="tag idle" id="stepTag">step 0</span></h2>
+
+      <dl class="kv" id="nodeStats">
+        <dt>Frontier queue</dt><dd id="qStat">—</dd>
+        <dt>Nodes / leaves</dt><dd id="nStat">—</dd>
+        <dt>Current node</dt><dd id="curStat">—</dd>
+      </dl>
+
+      <h2 style="margin:12px 0 6px">Candidate splits at current node</h2>
+      <div class="scrollx">
+        <table id="candTable">
+          <thead>
+            <tr><th>feature</th><th>threshold</th><th>n<sub>L</sub></th><th>n<sub>R</sub></th><th>I<sub>L</sub></th><th>I<sub>R</sub></th><th>ΔI</th></tr>
+          </thead>
+          <tbody><tr><td colspan="7" style="color:var(--muted);text-align:center">no node evaluated yet</td></tr></tbody>
+        </table>
+      </div>
+
+      <h2 style="margin:12px 0 6px">Tree structure</h2>
+      <div class="treewrap"><svg id="tree" width="100%" height="220"></svg></div>
+      <p class="hint" id="treeLegend">
+        Amber = node evaluated this step · dashed = still queued for expansion · solid grey = finished leaf.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>Loss Graph <span class="tag idle" id="lossTag">—</span></h2>
+      <canvas id="loss" width="900" height="420"></canvas>
+      <div class="row" style="margin-top:8px;font-size:11.5px;color:var(--muted)">
+        <span class="chip"><i class="dot" style="background:var(--accent)"></i>weighted leaf impurity</span>
+        <span class="chip"><i class="dot" style="background:var(--accent-2)"></i>training error rate</span>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div><b>Group members:</b> Krittin Y. · Phurin S. · Pavarisorn H. · Soponwit S. · Krissada R. · Aphichaphon P.</div>
+  <div><b>CEi KMITL</b></div>
+</footer>
+
+<script>
+(function(){
+"use strict";
+
+/* ---------------------------------------------------------------- state */
+const COLORS = ["#60a5fa","#f472b6","#34d399"];
+const FILLS  = ["rgba(96,165,250,.20)","rgba(244,114,182,.20)","rgba(52,211,153,.20)"];
+const NAMES  = ["A","B","C"];
+const K = 3;
+
+const S = {
+  pts: [],        // {x,y,c}  in [0,1]^2
+  paint: 0,
+  erase: false,
+  root: null,
+  queue: [],
+  step: 0,
+  nextId: 1,
+  current: null,
+  cands: [],
+  history: [],    // {step, imp, err}
+  playing: false,
+  timer: null,
+  done: false,
+  message: "Tree not built yet. Press <b>Step</b> to expand the root node."
+};
+
+const $ = id => document.getElementById(id);
+const board = $("board"), bctx = board.getContext("2d");
+const lossC = $("loss"), lctx = lossC.getContext("2d");
+
+/* ------------------------------------------------------------ hyperparams */
+function HP(){
+  return {
+    maxDepth:+$("maxDepth").value,
+    minSplit:+$("minSplit").value,
+    minGain:+$("minGain").value,
+    nThresh:+$("nThresh").value,
+    criterion:$("criterion").value
+  };
+}
+
+/* -------------------------------------------------------------- impurity */
+function counts(idx){
+  const c = new Array(K).fill(0);
+  for(const i of idx) c[S.pts[i].c]++;
+  return c;
+}
+function impurity(c,n,crit){
+  if(n===0) return 0;
+  if(crit==="entropy"){
+    let s=0; for(const v of c){ if(v>0){ const p=v/n; s-=p*Math.log2(p);} } return s;
+  }
+  let s=1; for(const v of c){ const p=v/n; s-=p*p; } return s;
+}
+function majority(c){
+  let b=0; for(let i=1;i<K;i++) if(c[i]>c[b]) b=i; return b;
+}
+
+/* ------------------------------------------------------------- tree core */
+function makeNode(idx,bounds,depth){
+  const c = counts(idx), n = idx.length;
+  return {
+    id:S.nextId++, idx, bounds, depth, counts:c, n,
+    imp:impurity(c,n,HP().criterion),
+    pred:majority(c),
+    feat:null, thr:null, left:null, right:null, leaf:false, reason:""
+  };
+}
+
+function resetTree(){
+  stopPlay();
+  S.nextId=1; S.step=0; S.current=null; S.cands=[]; S.done=false;
+  if(S.pts.length===0){
+    S.root=null; S.queue=[]; S.history=[];
+    S.message="No data points. Generate a dataset or click on the canvas.";
+  }else{
+    S.root = makeNode(S.pts.map((_,i)=>i),{x0:0,x1:1,y0:0,y1:1},0);
+    S.queue = [S.root];
+    S.history = [{step:0, imp:leafImpurity(), err:errorRate()}];
+    S.message = "Root created with <span class='mono'>"+S.pts.length+"</span> samples. Press <b>Step</b> to evaluate its best split.";
+  }
+  renderAll();
+}
+
+function leaves(){
+  const out=[];
+  (function walk(n){ if(!n) return; if(n.left){walk(n.left);walk(n.right);} else out.push(n); })(S.root);
+  return out;
+}
+function leafImpurity(){
+  const N=S.pts.length; if(!N||!S.root) return 0;
+  const crit=HP().criterion;
+  let s=0; for(const l of leaves()) s += (l.n/N)*impurity(l.counts,l.n,crit);
+  return s;
+}
+function errorRate(){
+  const N=S.pts.length; if(!N||!S.root) return 0;
+  let wrong=0; for(const l of leaves()) wrong += l.n - l.counts[l.pred];
+  return wrong/N;
+}
+
+function candidatesFor(node){
+  const hp=HP(), out=[];
+  for(let f=0;f<2;f++){
+    const vals = node.idx.map(i=> f===0 ? S.pts[i].x : S.pts[i].y).sort((a,b)=>a-b);
+    const mids=[];
+    for(let i=1;i<vals.length;i++){ if(vals[i]-vals[i-1] > 1e-9) mids.push((vals[i]+vals[i-1])/2); }
+    if(!mids.length) continue;
+    // subsample thresholds evenly
+    let picks=mids;
+    if(mids.length>hp.nThresh){
+      picks=[];
+      for(let t=0;t<hp.nThresh;t++) picks.push(mids[Math.floor(t*(mids.length-1)/(hp.nThresh-1))]);
+      picks=[...new Set(picks)];
+    }
+    for(const thr of picks){
+      const L=[],R=[];
+      for(const i of node.idx) ((f===0?S.pts[i].x:S.pts[i].y) <= thr ? L : R).push(i);
+      if(!L.length||!R.length) continue;
+      const cL=counts(L), cR=counts(R);
+      const iL=impurity(cL,L.length,hp.criterion), iR=impurity(cR,R.length,hp.criterion);
+      const gain = node.imp - (L.length/node.n)*iL - (R.length/node.n)*iR;
+      out.push({f,thr,L,R,cL,cR,iL,iR,gain});
+    }
+  }
+  out.sort((a,b)=>b.gain-a.gain);
+  return out;
+}
+
+function doStep(){
+  if(!S.root){ resetTree(); if(!S.root) return false; }
+  if(!S.queue.length){ S.done=true; S.message="<b>Converged.</b> No nodes left in the frontier — the tree is final."; renderAll(); return false; }
+
+  const hp=HP();
+  const node=S.queue.shift();
+  S.current=node; S.step++;
+
+  // stop conditions before searching
+  if(node.imp<=1e-12){ node.leaf=true; node.reason="pure node (I = 0)"; S.cands=[]; }
+  else if(node.n < hp.minSplit){ node.leaf=true; node.reason="n = "+node.n+" < min samples to split ("+hp.minSplit+")"; S.cands=[]; }
+  else if(node.depth >= hp.maxDepth){ node.leaf=true; node.reason="depth "+node.depth+" = max depth"; S.cands=[]; }
+  else{
+    const cands=candidatesFor(node);
+    S.cands=cands.slice(0,40);
+    const best=cands[0];
+    if(!best || best.gain < hp.minGain || best.gain<=1e-12){
+      node.leaf=true;
+      node.reason = best ? "best ΔI = "+best.gain.toFixed(4)+" < min impurity decrease ("+hp.minGain.toFixed(3)+")"
+                         : "no valid split (all values identical)";
+    }else{
+      node.feat=best.f; node.thr=best.thr; node.best=best;
+      const b=node.bounds;
+      const bL = best.f===0 ? {x0:b.x0,x1:best.thr,y0:b.y0,y1:b.y1} : {x0:b.x0,x1:b.x1,y0:b.y0,y1:best.thr};
+      const bR = best.f===0 ? {x0:best.thr,x1:b.x1,y0:b.y0,y1:b.y1} : {x0:b.x0,x1:b.x1,y0:best.thr,y1:b.y1};
+      node.left = makeNode(best.L,bL,node.depth+1);
+      node.right= makeNode(best.R,bR,node.depth+1);
+      node.left.parent=node; node.right.parent=node;
+      S.queue.push(node.left,node.right);
+      node.reason = "split on "+(best.f===0?"x":"y")+" ≤ "+best.thr.toFixed(3)+"  (ΔI = "+best.gain.toFixed(4)+")";
+    }
+  }
+
+  S.history.push({step:S.step, imp:leafImpurity(), err:errorRate()});
+  S.done = S.queue.length===0;
+  S.message = "Step <span class='mono'>"+S.step+"</span> — node #"+node.id+" (depth "+node.depth+", n="+node.n+"): "+
+              (node.leaf? "made a <b>leaf</b> → predict "+NAMES[node.pred]+" · "+node.reason
+                        : "<b>"+node.reason+"</b>");
+  if(S.done) S.message += "<br><b>Converged.</b> Frontier is empty.";
+  renderAll();
+  return !S.done;
+}
+
+function play(){
+  if(S.playing) { stopPlay(); return; }
+  if(!S.root) resetTree();
+  if(S.done || !S.queue.length){ return; }
+  S.playing=true; $("playBtn").textContent="⏸ Pause";
+  const tick=()=>{
+    const more=doStep();
+    if(!more||!S.playing){ stopPlay(); return; }
+    S.timer=setTimeout(tick,+$("speed").value);
+  };
+  S.timer=setTimeout(tick,20);
+}
+function stopPlay(){
+  S.playing=false; clearTimeout(S.timer); S.timer=null;
+  const b=$("playBtn"); if(b) b.textContent="⏩ Play to convergence";
+}
+
+function predictNode(x,y){
+  let n=S.root;
+  if(!n) return null;
+  while(n.left){ n = ((n.feat===0?x:y) <= n.thr) ? n.left : n.right; }
+  return n;
+}
+
+/* ------------------------------------------------------------- datasets */
+function rnd(){ return Math.random(); }
+function gauss(){ let u=0,v=0; while(!u)u=Math.random(); while(!v)v=Math.random();
+  return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+const clamp=(v,a=0.02,b=0.98)=>Math.max(a,Math.min(b,v));
+
+function generate(){
+  const kind=$("dataset").value, n=+$("npp").value, pts=[];
+  const push=(x,y,c)=>pts.push({x:clamp(x),y:clamp(y),c});
+  if(kind==="blobs"){
+    const ctr=[[.25,.28],[.74,.30],[.50,.76]];
+    for(let c=0;c<K;c++) for(let i=0;i<n;i++) push(ctr[c][0]+gauss()*.09, ctr[c][1]+gauss()*.09, c);
+  }else if(kind==="xor"){
+    for(let i=0;i<n*3;i++){
+      const x=rnd(), y=rnd();
+      let c = ((x>.5)!==(y>.5)) ? 0 : 1;
+      if(Math.abs(x-.5)<.06 || Math.abs(y-.5)<.06) c=2;
+      push(x,y,c);
+    }
+  }else if(kind==="rings"){
+    for(let c=0;c<K;c++){
+      const r0=.12+c*.16;
+      for(let i=0;i<n;i++){ const a=rnd()*2*Math.PI, r=r0+gauss()*.035;
+        push(.5+r*Math.cos(a), .5+r*Math.sin(a), c); }
+    }
+  }else if(kind==="stripes"){
+    for(let i=0;i<n*3;i++){ const x=rnd(), y=rnd();
+      push(x,y, Math.floor((((x+y)*3)%3+3)%3)); }
+  }else{ // spiral
+    for(let c=0;c<K;c++) for(let i=0;i<n;i++){
+      const t=i/n*3.1, a=t*2.2 + c*2*Math.PI/3, r=.04+t*.14;
+      push(.5+r*Math.cos(a)+gauss()*.018, .5+r*Math.sin(a)+gauss()*.018, c);
+    }
+  }
+  S.pts=pts; resetTree();
+}
+
+/* --------------------------------------------------------- canvas render */
+function fitCanvas(c){
+  const dpr=Math.min(2,window.devicePixelRatio||1);
+  const w=c.clientWidth, h=Math.round(w*(c===board?0.72:0.46));
+  if(c.width!==Math.round(w*dpr)||c.height!==Math.round(h*dpr)){
+    c.width=Math.round(w*dpr); c.height=Math.round(h*dpr);
+  }
+  c.style.height=h+"px";
+  const ctx=c.getContext("2d");
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return {w,h};
+}
+
+function drawBoard(){
+  const {w,h}=fitCanvas(board);
+  bctx.clearRect(0,0,w,h);
+  bctx.fillStyle="#0f1622"; bctx.fillRect(0,0,w,h);
+
+  // prediction regions
+  if(S.root){
+    const cell=5;
+    for(let px=0;px<w;px+=cell){
+      for(let py=0;py<h;py+=cell){
+        const nd=predictNode((px+cell/2)/w,(py+cell/2)/h);
+        if(!nd) continue;
+        const pure = nd.n? nd.counts[nd.pred]/nd.n : 0;
+        bctx.globalAlpha = 0.16 + 0.34*pure;
+        bctx.fillStyle = COLORS[nd.pred];
+        bctx.fillRect(px,py,cell,cell);
+      }
+    }
+    bctx.globalAlpha=1;
+  }
+
+  // grid
+  bctx.strokeStyle="rgba(255,255,255,.05)"; bctx.lineWidth=1;
+  for(let i=1;i<10;i++){
+    const gx=Math.round(i*w/10)+.5, gy=Math.round(i*h/10)+.5;
+    bctx.beginPath(); bctx.moveTo(gx,0); bctx.lineTo(gx,h); bctx.stroke();
+    bctx.beginPath(); bctx.moveTo(0,gy); bctx.lineTo(w,gy); bctx.stroke();
+  }
+
+  // split lines, clipped to each node's own region
+  if(S.root){
+    (function walk(n){
+      if(!n||!n.left) return;
+      const b=n.bounds, cur = (n===S.current);
+      bctx.strokeStyle = cur ? "#f59e0b" : "rgba(255,255,255,.75)";
+      bctx.lineWidth = cur ? 2.5 : 1.6;
+      bctx.beginPath();
+      if(n.feat===0){ const x=n.thr*w; bctx.moveTo(x,b.y0*h); bctx.lineTo(x,b.y1*h); }
+      else          { const y=n.thr*h; bctx.moveTo(b.x0*w,y); bctx.lineTo(b.x1*w,y); }
+      bctx.stroke();
+      walk(n.left); walk(n.right);
+    })(S.root);
+  }
+
+  // highlight current node region
+  if(S.current){
+    const b=S.current.bounds;
+    bctx.strokeStyle="rgba(245,158,11,.9)"; bctx.setLineDash([5,4]); bctx.lineWidth=1.5;
+    bctx.strokeRect(b.x0*w+1,b.y0*h+1,(b.x1-b.x0)*w-2,(b.y1-b.y0)*h-2);
+    bctx.setLineDash([]);
+  }
+
+  // points
+  for(const p of S.pts){
+    const x=p.x*w, y=p.y*h;
+    let mis=false;
+    if(S.root){ const nd=predictNode(p.x,p.y); mis = nd && nd.pred!==p.c; }
+    bctx.beginPath(); bctx.arc(x,y,4.4,0,7);
+    bctx.fillStyle=COLORS[p.c]; bctx.fill();
+    bctx.lineWidth=1.6;
+    bctx.strokeStyle = mis ? "#fb7185" : "rgba(10,14,22,.85)";
+    bctx.stroke();
+  }
+}
+
+function drawLoss(){
+  const {w,h}=fitCanvas(lossC);
+  lctx.clearRect(0,0,w,h);
+  lctx.fillStyle="#0f1622"; lctx.fillRect(0,0,w,h);
+  const pad={l:44,r:12,t:14,b:26};
+  const IW=w-pad.l-pad.r, IH=h-pad.t-pad.b;
+
+  const hist=S.history;
+  const maxStep=Math.max(4, hist.length?hist[hist.length-1].step:4);
+  let maxY=0.05;
+  for(const p of hist) maxY=Math.max(maxY,p.imp,p.err);
+  maxY=Math.ceil(maxY*10)/10;
+
+  lctx.strokeStyle="rgba(255,255,255,.08)"; lctx.fillStyle="#8ba0bd";
+  lctx.font="11px ui-monospace,monospace"; lctx.textAlign="right"; lctx.textBaseline="middle";
+  for(let i=0;i<=4;i++){
+    const y=pad.t+IH*i/4, v=maxY*(1-i/4);
+    lctx.beginPath(); lctx.moveTo(pad.l,y+.5); lctx.lineTo(pad.l+IW,y+.5); lctx.stroke();
+    lctx.fillText(v.toFixed(2),pad.l-8,y);
+  }
+  lctx.textAlign="center"; lctx.textBaseline="top";
+  const ticks=Math.min(maxStep,8);
+  for(let i=0;i<=ticks;i++){
+    const st=Math.round(maxStep*i/ticks);
+    const x=pad.l+IW*(st/maxStep);
+    lctx.fillText(st, x, pad.t+IH+6);
+  }
+  lctx.fillStyle="#8ba0bd"; lctx.textAlign="left";
+  lctx.fillText("step", pad.l, 0);
+
+  if(hist.length<1) return;
+  const X=s=>pad.l+IW*(s/maxStep), Y=v=>pad.t+IH*(1-v/maxY);
+
+  const line=(key,color,fill)=>{
+    lctx.beginPath();
+    hist.forEach((p,i)=>{ const x=X(p.step), y=Y(p[key]); i?lctx.lineTo(x,y):lctx.moveTo(x,y); });
+    lctx.strokeStyle=color; lctx.lineWidth=2; lctx.lineJoin="round"; lctx.stroke();
+    if(fill){
+      lctx.lineTo(X(hist[hist.length-1].step),Y(0)); lctx.lineTo(X(hist[0].step),Y(0)); lctx.closePath();
+      lctx.fillStyle=fill; lctx.fill();
+    }
+    for(const p of hist){ lctx.beginPath(); lctx.arc(X(p.step),Y(p[key]),2.6,0,7); lctx.fillStyle=color; lctx.fill(); }
+  };
+  line("err","#f59e0b",null);
+  line("imp","#5eead4","rgba(94,234,212,.10)");
+}
+
+/* ----------------------------------------------------------- tree render */
+function drawTree(){
+  const svg=$("tree");
+  while(svg.firstChild) svg.removeChild(svg.firstChild);
+  if(!S.root){ svg.setAttribute("height",60); return; }
+
+  const NW=112,NH=42,GX=18,GY=34;
+  let x=0; const all=[];
+  (function assign(n){
+    all.push(n);
+    if(n.left){ assign(n.left); assign(n.right); n._x=(n.left._x+n.right._x)/2; }
+    else { n._x = x; x += NW+GX; }
+    n._y = n.depth*(NH+GY);
+  })(S.root);
+
+  const W=Math.max(320, x+20), H=(Math.max(...all.map(n=>n.depth))+1)*(NH+GY)+10;
+  svg.setAttribute("viewBox","0 0 "+W+" "+H);
+  svg.setAttribute("width",Math.max(W,320));
+  svg.setAttribute("height",H);
+  const NS="http://www.w3.org/2000/svg";
+  const el=(t,a)=>{ const e=document.createElementNS(NS,t); for(const k in a) e.setAttribute(k,a[k]); return e; };
+
+  for(const n of all){
+    if(!n.left) continue;
+    for(const ch of [n.left,n.right]){
+      svg.appendChild(el("path",{
+        d:"M"+(n._x+NW/2)+","+(n._y+NH)+" C"+(n._x+NW/2)+","+(n._y+NH+GY/2)+" "+(ch._x+NW/2)+","+(ch._y-GY/2)+" "+(ch._x+NW/2)+","+ch._y,
+        fill:"none",stroke:"#2c3a55","stroke-width":1.4}));
+      const t=el("text",{x:(n._x+ch._x)/2+NW/2, y:(n._y+ch._y)/2+NH/2, fill:"#64748b","font-size":9,"text-anchor":"middle"});
+      t.textContent = ch===n.left?"true":"false"; svg.appendChild(t);
+    }
+  }
+
+  for(const n of all){
+    const queued = S.queue.includes(n), cur = n===S.current;
+    const g=el("g",{});
+    g.appendChild(el("rect",{x:n._x,y:n._y,width:NW,height:NH,rx:7,
+      fill: cur?"#2a2313":"#182335",
+      stroke: cur?"#f59e0b":(queued?"#4b5f85":"#2c3a55"),
+      "stroke-width": cur?2:1.2,
+      "stroke-dasharray": queued&&!cur?"4 3":""}));
+    const t1=el("text",{x:n._x+8,y:n._y+16,fill:"#dbe6f6","font-size":10.5});
+    t1.textContent = n.left ? ((n.feat===0?"x":"y")+" ≤ "+n.thr.toFixed(3)) : ("leaf → "+NAMES[n.pred]);
+    g.appendChild(t1);
+    const t2=el("text",{x:n._x+8,y:n._y+29,fill:"#8ba0bd","font-size":9});
+    t2.textContent = "n="+n.n+"  I="+n.imp.toFixed(3);
+    g.appendChild(t2);
+    // class count bar
+    let bx=n._x+8; const bw=NW-16;
+    for(let c=0;c<K;c++){
+      const seg=bw*(n.counts[c]/Math.max(1,n.n));
+      if(seg>0){ g.appendChild(el("rect",{x:bx,y:n._y+34,width:seg,height:3.5,rx:1.5,fill:COLORS[c]})); bx+=seg; }
+    }
+    svg.appendChild(g);
+  }
+}
+
+/* ----------------------------------------------------------- panel render */
+function renderPanels(){
+  $("stepTag").textContent="step "+S.step;
+  $("canvasTag").textContent = S.pts.length+" points";
+  const ph=$("phaseTag");
+  ph.className = "tag "+(S.done && S.root ? "" : (S.playing?"warn":"idle"));
+  ph.textContent = !S.root ? "no data" : (S.done ? "converged" : (S.playing?"running":"growing"));
+
+  $("qStat").textContent = S.root ? S.queue.length+" node(s) waiting" : "—";
+  if(S.root){
+    const all=[]; (function w(n){ all.push(n); if(n.left){w(n.left);w(n.right);} })(S.root);
+    $("nStat").textContent = all.length+" nodes · "+leaves().length+" leaves · depth "+Math.max(...all.map(n=>n.depth));
+  } else $("nStat").textContent="—";
+  $("curStat").innerHTML = S.current
+    ? ("#"+S.current.id+" · depth "+S.current.depth+" · n="+S.current.n+" · I="+S.current.imp.toFixed(4)
+       +" · counts ["+S.current.counts.join(", ")+"]")
+    : "—";
+  $("status").innerHTML = S.message;
+
+  const last=S.history[S.history.length-1];
+  const lt=$("lossTag");
+  if(last){ lt.className="tag"; lt.textContent="L = "+last.imp.toFixed(4); }
+  else { lt.className="tag idle"; lt.textContent="—"; }
+
+  const tb=$("candTable").querySelector("tbody");
+  tb.innerHTML="";
+  if(!S.cands.length){
+    tb.innerHTML='<tr><td colspan="7" style="color:var(--muted);text-align:center">'+
+      (S.current && S.current.leaf ? "stopped early — "+S.current.reason : "no node evaluated yet")+"</td></tr>";
+  }else{
+    S.cands.forEach((c,i)=>{
+      const tr=document.createElement("tr");
+      if(i===0) tr.className="best";
+      tr.innerHTML="<td>"+(c.f===0?"x":"y")+"</td><td>"+c.thr.toFixed(3)+"</td><td>"+c.L.length+"</td><td>"+
+        c.R.length+"</td><td>"+c.iL.toFixed(3)+"</td><td>"+c.iR.toFixed(3)+"</td><td>"+c.gain.toFixed(4)+"</td>";
+      tb.appendChild(tr);
+    });
+  }
+
+  $("stepBtn").disabled = !S.pts.length || (S.root && S.done);
+  $("playBtn").disabled = !S.pts.length || (S.root && S.done && !S.playing);
+}
+
+function renderAll(){ drawBoard(); drawTree(); drawLoss(); renderPanels(); }
+
+/* ---------------------------------------------------------------- events */
+function canvasXY(e){
+  const r=board.getBoundingClientRect();
+  return {x:(e.clientX-r.left)/r.width, y:(e.clientY-r.top)/r.height};
+}
+function nearest(x,y){
+  let best=-1,bd=Infinity;
+  S.pts.forEach((p,i)=>{ const d=(p.x-x)**2+(p.y-y)**2; if(d<bd){bd=d;best=i;} });
+  return (bd < 0.00035) ? best : -1;
+}
+board.addEventListener("contextmenu",e=>{
+  e.preventDefault();
+  const {x,y}=canvasXY(e); const i=nearest(x,y);
+  if(i>=0){ S.pts.splice(i,1); resetTree(); }
+});
+board.addEventListener("pointerdown",e=>{
+  if(e.button===2) return;
+  const {x,y}=canvasXY(e);
+  if(x<0||x>1||y<0||y>1) return;
+  const i=nearest(x,y);
+  if(i>=0 || S.erase){ if(i>=0) S.pts.splice(i,1); }
+  else S.pts.push({x,y,c:S.paint});
+  resetTree();
+});
+
+document.querySelectorAll(".clsBtn").forEach(b=>{
+  b.addEventListener("click",()=>{
+    S.paint=+b.dataset.cls; S.erase=false;
+    document.querySelectorAll(".clsBtn").forEach(o=>o.classList.toggle("active",o===b));
+    $("eraseBtn").classList.remove("active");
+    board.style.cursor="crosshair";
+  });
+});
+$("eraseBtn").addEventListener("click",()=>{
+  S.erase=!S.erase;
+  $("eraseBtn").classList.toggle("active",S.erase);
+  if(S.erase) document.querySelectorAll(".clsBtn").forEach(o=>o.classList.remove("active"));
+  else document.querySelector('.clsBtn[data-cls="'+S.paint+'"]').classList.add("active");
+  board.style.cursor = S.erase ? "not-allowed" : "crosshair";
+});
+$("clearBtn").addEventListener("click",()=>{ S.pts=[]; resetTree(); });
+$("genBtn").addEventListener("click",generate);
+$("stepBtn").addEventListener("click",()=>{ stopPlay(); doStep(); });
+$("playBtn").addEventListener("click",play);
+$("resetBtn").addEventListener("click",resetTree);
+
+const bind=(id,lbl,fmt)=>{
+  const el=$(id);
+  const upd=()=>{ $(lbl).textContent=fmt(el.value); };
+  el.addEventListener("input",()=>{ upd(); if(id!=="speed") resetTree(); });
+  upd();
+};
+bind("maxDepth","mdLbl",v=>v);
+bind("minSplit","msLbl",v=>v);
+bind("minGain","miLbl",v=>(+v).toFixed(3));
+bind("nThresh","ctLbl",v=>v);
+bind("npp","nppLbl",v=>v);
+bind("speed","spLbl",v=>v+" ms");
+$("criterion").addEventListener("change",resetTree);
+$("dataset").addEventListener("change",generate);
+
+window.addEventListener("resize",()=>{ drawBoard(); drawLoss(); });
+document.addEventListener("keydown",e=>{
+  if(e.target.tagName==="INPUT"||e.target.tagName==="SELECT") return;
+  if(e.code==="Space"){ e.preventDefault(); stopPlay(); doStep(); }
+  if(e.key==="p"||e.key==="P") play();
+  if(e.key==="r"||e.key==="R") resetTree();
+});
+
+generate();
+})();
+</script>
+</body>
+</html>
