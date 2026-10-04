@@ -1,5 +1,9 @@
 # Binary Decision Tree Visualizer
+
+<https://kritonkla.github.io/CEI_DA_A2-Decision-Tree-Visualizer/>
+
 ## Group Member
+
 Krittin Yanyong 67011157\
 Phurin Supawattanakul 67011259\
 Pavarisorn Hirunpetcharat 670111244\
