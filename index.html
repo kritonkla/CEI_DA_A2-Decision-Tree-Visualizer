@@ -105,6 +105,12 @@
   canvas{display:block;width:100%;border-radius:8px;background:var(--panel-2)}
   #board{border:1px solid var(--line-soft);cursor:crosshair;touch-action:none}
   #loss{border:1px solid var(--line-soft)}
+  #nozzleRing{
+    position:fixed;left:0;top:0;z-index:50;display:none;pointer-events:none;
+    border:1.5px solid var(--accent);border-radius:50%;
+    transform:translate(-50%,-50%);
+  }
+  #nozzleRing.erase{border-style:dashed;border-color:var(--danger);background:rgba(251,113,133,.10)}
 
   .row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0}
   .row + .row{margin-top:8px}
@@ -203,6 +209,8 @@
 </head>
 <body>
 
+<div id="nozzleRing" aria-hidden="true"></div>
+
 <header>
   <h1>CART <span>Binary Decision Tree</span> — Greedy Recursive Partitioning</h1>
   <p>
@@ -234,6 +242,13 @@
 
       <div class="row">
         <label class="field" style="flex:1 1 150px">
+          <b>Nozzle size <i id="nzLbl">48 px</i></b>
+          <input type="range" id="nozzle" min="8" max="200" step="2" value="48" />
+        </label>
+      </div>
+
+      <div class="row">
+        <label class="field" style="flex:1 1 150px">
           <b>Random dataset</b>
           <select id="dataset">
             <option value="blobs">Gaussian blobs</option>
@@ -251,7 +266,8 @@
       </div>
 
       <p class="hint">
-        Click empty space to add a point of the painted class · click a point (or right-click / Erase mode) to delete it.
+        Press and hold to spray random points of the painted class inside the nozzle circle · drag to paint along a path ·
+        hold right-click (or switch on Erase mode) to erase every point under the nozzle.
         Shaded regions are the tree's current predictions; white lines are the axis-aligned split boundaries, drawn only
         inside the region each node owns.
       </p>
@@ -427,7 +443,7 @@ function resetTree(){
   S.nextId=1; S.step=0; S.current=null; S.cands=[]; S.done=false;
   if(S.pts.length===0){
     S.root=null; S.queue=[]; S.history=[];
-    S.message="No data points. Generate a dataset or click on the canvas.";
+    S.message="No data points. Generate a dataset or spray on the canvas.";
   }else{
     S.root = makeNode(S.pts.map((_,i)=>i),{x0:0,x1:1,y0:0,y1:1},0);
     S.queue = [S.root];
@@ -605,7 +621,13 @@ function drawBoard(){
   bctx.fillStyle="#0f1622"; bctx.fillRect(0,0,w,h);
 
   // prediction regions
-  if(S.root){
+  if(S.root && !S.root.left){
+    const nd=S.root, pure = nd.n? nd.counts[nd.pred]/nd.n : 0;
+    bctx.globalAlpha = 0.16 + 0.34*pure;
+    bctx.fillStyle = COLORS[nd.pred];
+    bctx.fillRect(0,0,w,h);
+    bctx.globalAlpha=1;
+  }else if(S.root){
     const cell=5;
     for(let px=0;px<w;px+=cell){
       for(let py=0;py<h;py+=cell){
@@ -814,29 +836,97 @@ function renderPanels(){
 function renderAll(){ drawBoard(); drawTree(); drawLoss(); renderPanels(); }
 
 /* ---------------------------------------------------------------- events */
-function canvasXY(e){
+/* ---- nozzle spraying: hold to add random points inside the nozzle circle; erase removes every point inside it */
+const NOZZLE_TICK = 40;       // ms between spray bursts while the pointer is held
+const SPRAY_AREA  = 2000;     // px² of nozzle area per point per burst (constant density per area)
+const ring = $("nozzleRing");
+let stroke = null;            // {id, mode:"spray"|"erase", x,y (current), px,py (previous), first, timer}
+
+const nozzleR = () => (+$("nozzle").value)/2;
+
+// pointer position in board CSS pixels (the same space the board is drawn in)
+function boardPx(e){
   const r=board.getBoundingClientRect();
-  return {x:(e.clientX-r.left)/r.width, y:(e.clientY-r.top)/r.height};
+  return {x:e.clientX-r.left-board.clientLeft, y:e.clientY-r.top-board.clientTop};
 }
-function nearest(x,y){
-  let best=-1,bd=Infinity;
-  S.pts.forEach((p,i)=>{ const d=(p.x-x)**2+(p.y-y)**2; if(d<bd){bd=d;best=i;} });
-  return (bd < 0.00035) ? best : -1;
+
+function syncRing(){
+  const R=nozzleR(), er = S.erase || (stroke && stroke.mode==="erase");
+  ring.style.width = ring.style.height = (2*R)+"px";
+  ring.classList.toggle("erase",!!er);
+  ring.style.borderColor = er ? "" : COLORS[S.paint];
+  ring.style.background  = er ? "" : FILLS[S.paint];
 }
-board.addEventListener("contextmenu",e=>{
-  e.preventDefault();
-  const {x,y}=canvasXY(e); const i=nearest(x,y);
-  if(i>=0){ S.pts.splice(i,1); resetTree(); }
-});
+function moveRing(e){
+  ring.style.left=e.clientX+"px"; ring.style.top=e.clientY+"px";
+  ring.style.display="block";
+}
+function hideRing(){ ring.style.display="none"; }
+
+// squared distance from point (px,py) to segment a→b
+function segDist2(px,py,ax,ay,bx,by){
+  const dx=bx-ax, dy=by-ay, L=dx*dx+dy*dy;
+  let t = L>0 ? ((px-ax)*dx+(py-ay)*dy)/L : 0;
+  t = Math.max(0,Math.min(1,t));
+  const qx=ax+t*dx-px, qy=ay+t*dy-py;
+  return qx*qx+qy*qy;
+}
+
+function sprayTick(){
+  const st=stroke; if(!st) return;
+  const R=nozzleR(), cw=board.clientWidth, ch=board.clientHeight;
+  const ax=st.px, ay=st.py, bx=st.x, by=st.y;   // path travelled since the last burst
+  let changed=false;
+
+  if(st.mode==="erase"){
+    const R2=R*R, before=S.pts.length;
+    S.pts = S.pts.filter(p=>segDist2(p.x*cw,p.y*ch,ax,ay,bx,by) > R2);
+    changed = S.pts.length!==before;
+  }else{
+    const e=Math.PI*R*R/SPRAY_AREA;
+    let n=Math.floor(e)+(Math.random()<e%1?1:0);
+    if(st.first) n=Math.max(1,n);               // a quick tap always leaves at least one point
+    for(let i=0;i<n;i++){
+      const t=Math.random(), cx=ax+(bx-ax)*t, cy=ay+(by-ay)*t;
+      const rr=R*Math.sqrt(Math.random()), a=Math.random()*2*Math.PI;   // uniform over the disc
+      const x=(cx+rr*Math.cos(a))/cw, y=(cy+rr*Math.sin(a))/ch;
+      if(x<0||x>1||y<0||y>1) continue;
+      S.pts.push({x,y,c:S.paint}); changed=true;
+    }
+  }
+  st.px=bx; st.py=by; st.first=false;
+  if(changed) resetTree();
+}
+
+function endStroke(e){
+  if(!stroke || (e && e.pointerId!==undefined && e.pointerId!==stroke.id)) return;
+  clearInterval(stroke.timer);
+  stroke=null;
+  syncRing();
+  if(e && e.pointerType && e.pointerType!=="mouse") hideRing();
+}
+
+board.addEventListener("contextmenu",e=>e.preventDefault());
 board.addEventListener("pointerdown",e=>{
-  if(e.button===2) return;
-  const {x,y}=canvasXY(e);
-  if(x<0||x>1||y<0||y>1) return;
-  const i=nearest(x,y);
-  if(i>=0 || S.erase){ if(i>=0) S.pts.splice(i,1); }
-  else S.pts.push({x,y,c:S.paint});
-  resetTree();
+  if(e.button!==0 && e.button!==2) return;
+  if(stroke) endStroke();
+  e.preventDefault();
+  try{ board.setPointerCapture(e.pointerId); }catch(_){}
+  const p=boardPx(e);
+  stroke={id:e.pointerId, mode:(e.button===2||S.erase)?"erase":"spray", x:p.x,y:p.y,px:p.x,py:p.y, first:true, timer:null};
+  syncRing(); moveRing(e);
+  sprayTick();
+  stroke.timer=setInterval(sprayTick,NOZZLE_TICK);
 });
+board.addEventListener("pointermove",e=>{
+  if(e.pointerType==="mouse" || stroke) moveRing(e);
+  if(stroke && e.pointerId===stroke.id){ const p=boardPx(e); stroke.x=p.x; stroke.y=p.y; }
+});
+board.addEventListener("pointerleave",()=>{ if(!stroke) hideRing(); });
+board.addEventListener("pointerup",endStroke);
+board.addEventListener("pointercancel",endStroke);
+board.addEventListener("lostpointercapture",endStroke);
+window.addEventListener("blur",()=>endStroke());
 
 document.querySelectorAll(".clsBtn").forEach(b=>{
   b.addEventListener("click",()=>{
@@ -844,6 +934,7 @@ document.querySelectorAll(".clsBtn").forEach(b=>{
     document.querySelectorAll(".clsBtn").forEach(o=>o.classList.toggle("active",o===b));
     $("eraseBtn").classList.remove("active");
     board.style.cursor="crosshair";
+    syncRing();
   });
 });
 $("eraseBtn").addEventListener("click",()=>{
@@ -852,6 +943,7 @@ $("eraseBtn").addEventListener("click",()=>{
   if(S.erase) document.querySelectorAll(".clsBtn").forEach(o=>o.classList.remove("active"));
   else document.querySelector('.clsBtn[data-cls="'+S.paint+'"]').classList.add("active");
   board.style.cursor = S.erase ? "not-allowed" : "crosshair";
+  syncRing();
 });
 $("clearBtn").addEventListener("click",()=>{ S.pts=[]; resetTree(); });
 $("genBtn").addEventListener("click",generate);
@@ -862,7 +954,7 @@ $("resetBtn").addEventListener("click",resetTree);
 const bind=(id,lbl,fmt)=>{
   const el=$(id);
   const upd=()=>{ $(lbl).textContent=fmt(el.value); };
-  el.addEventListener("input",()=>{ upd(); if(id!=="speed") resetTree(); });
+  el.addEventListener("input",()=>{ upd(); if(id!=="speed" && id!=="nozzle") resetTree(); });
   upd();
 };
 bind("maxDepth","mdLbl",v=>v);
@@ -871,6 +963,8 @@ bind("minGain","miLbl",v=>(+v).toFixed(3));
 bind("nThresh","ctLbl",v=>v);
 bind("npp","nppLbl",v=>v);
 bind("speed","spLbl",v=>v+" ms");
+bind("nozzle","nzLbl",v=>v+" px");
+$("nozzle").addEventListener("input",syncRing);
 $("criterion").addEventListener("change",resetTree);
 $("dataset").addEventListener("change",generate);
 
@@ -882,6 +976,7 @@ document.addEventListener("keydown",e=>{
   if(e.key==="r"||e.key==="R") resetTree();
 });
 
+syncRing();
 generate();
 })();
 </script>
