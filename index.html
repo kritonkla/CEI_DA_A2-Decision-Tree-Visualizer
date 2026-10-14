@@ -345,7 +345,9 @@
         </table>
       </div>
 
-      <h2 style="margin:12px 0 6px">Tree structure</h2>
+      <h2 style="margin:12px 0 6px">The math at this node</h2>
+<div class="status" id="worked" style="line-height:1.7"></div>
+<h2 style="margin:12px 0 6px">Tree structure</h2>
       <div class="treewrap"><svg id="tree" width="100%" height="220"></svg></div>
       <p class="hint" id="treeLegend">
         Amber = node evaluated this step · dashed = still queued for expansion · solid grey = finished leaf.
@@ -537,8 +539,8 @@ function doStep(){
               (node.leaf? "made a <b>leaf</b> → predict "+NAMES[node.pred]+" · "+node.reason
                         : "<b>"+node.reason+"</b>");
   if(S.done) S.message += "<br><b>Converged.</b> Frontier is empty.";
-  renderAll();
-  return !S.done;
+  if(!S.quiet) renderAll();
+return !S.done;
 }
 
 function play(){
@@ -547,6 +549,9 @@ function play(){
   if(S.done || !S.queue.length){ return; }
   S.playing=true; $("playBtn").textContent="⏸ Pause";
   const tick=()=>{
+    const k = S.queue.length>200 ? 10 : (S.queue.length>60 ? 4 : 1);
+    for(let i=1;i<k && S.queue.length>1;i++){ S.quiet=true; doStep(); }
+    S.quiet=false;
     const more=doStep();
     if(!more||!S.playing){ stopPlay(); return; }
     S.timer=setTimeout(tick,+$("speed").value);
@@ -753,6 +758,7 @@ function drawTree(){
   svg.setAttribute("width",Math.max(W,320));
   svg.setAttribute("height",H);
   const NS="http://www.w3.org/2000/svg";
+const qset=new Set(S.queue);
   const el=(t,a)=>{ const e=document.createElementNS(NS,t); for(const k in a) e.setAttribute(k,a[k]); return e; };
 
   for(const n of all){
@@ -767,7 +773,7 @@ function drawTree(){
   }
 
   for(const n of all){
-    const queued = S.queue.includes(n), cur = n===S.current;
+    const queued = qset.has(n), cur = n===S.current;
     const g=el("g",{});
     g.appendChild(el("rect",{x:n._x,y:n._y,width:NW,height:NH,rx:7,
       fill: cur?"#2a2313":"#182335",
@@ -791,6 +797,35 @@ function drawTree(){
 }
 
 /* ----------------------------------------------------------- panel render */
+/* ---- worked example: the arithmetic behind the chosen split ---- */
+const fc = c => c.map((v,i)=>NAMES[i]+" "+v).join(", ");
+function impTerms(c,n,crit){
+  const t=[];
+  c.forEach((v,i)=>{ if(v>0){ const p=(v/n).toFixed(2); t.push(crit==="entropy" ? p+"·log₂("+p+")" : p+"²"); } });
+  return crit==="entropy" ? "−("+t.join(" + ")+")" : "1 − ("+t.join(" + ")+")";
+}
+function workedHTML(){
+  const nd=S.current;
+  if(!nd) return "Press <b>Step</b> to see the math for the node being evaluated.";
+  const crit=HP().criterion;
+  let h="<b>"+(crit==="entropy"?"Entropy":"Gini")+" impurity</b>: "+(crit==="entropy"?"I = −Σ pᵢ·log₂ pᵢ":"I = 1 − Σ pᵢ²")+
+    " (pᵢ = share of class i). 0 = one colour only, larger = more mixed.<br>"+
+    "<b>1.</b> Node #"+nd.id+" holds ["+fc(nd.counts)+"] (n = "+nd.n+"):<br>&nbsp;&nbsp;I(parent) = "+
+    impTerms(nd.counts,nd.n,crit)+" = <span class='mono'>"+nd.imp.toFixed(3)+"</span>";
+  const b=nd.best;
+  if(!nd.leaf && b){
+    const nL=b.L.length, nR=b.R.length;
+    h+="<br><b>2.</b> Try the question <b>"+(b.f===0?"x":"y")+" ≤ "+b.thr.toFixed(3)+"</b>:"+
+      "<br>&nbsp;&nbsp;Yes → ["+fc(b.cL)+"], I<sub>L</sub> = <span class='mono'>"+b.iL.toFixed(3)+"</span>"+
+      "<br>&nbsp;&nbsp;No → ["+fc(b.cR)+"], I<sub>R</sub> = <span class='mono'>"+b.iR.toFixed(3)+"</span>"+
+      "<br><b>3.</b> Weight each side by its share of the points:"+
+      "<br>&nbsp;&nbsp;ΔI = "+nd.imp.toFixed(3)+" − ("+nL+"/"+nd.n+")·"+b.iL.toFixed(3)+" − ("+nR+"/"+nd.n+")·"+b.iR.toFixed(3)+
+      " = <span class='mono'>"+b.gain.toFixed(3)+"</span>"+
+      "<br><i>This question had the largest ΔI of all candidates, so the node uses it.</i>";
+  } else h+="<br>No split is made ("+nd.reason+"), so this node becomes a leaf that predicts <b>"+NAMES[nd.pred]+"</b>.";
+  return h;
+}
+
 function renderPanels(){
   $("stepTag").textContent="step "+S.step;
   $("canvasTag").textContent = S.pts.length+" points";
@@ -808,6 +843,7 @@ function renderPanels(){
        +" · counts ["+S.current.counts.join(", ")+"]")
     : "—";
   $("status").innerHTML = S.message;
+$("worked").innerHTML = workedHTML();
 
   const last=S.history[S.history.length-1];
   const lt=$("lossTag");
@@ -954,7 +990,7 @@ $("resetBtn").addEventListener("click",resetTree);
 const bind=(id,lbl,fmt)=>{
   const el=$(id);
   const upd=()=>{ $(lbl).textContent=fmt(el.value); };
-  el.addEventListener("input",()=>{ upd(); if(id!=="speed" && id!=="nozzle") resetTree(); });
+  el.addEventListener("input",()=>{ upd(); if(id!=="speed" && id!=="nozzle" && id!=="npp") resetTree(); });
   upd();
 };
 bind("maxDepth","mdLbl",v=>v);
@@ -967,6 +1003,7 @@ bind("nozzle","nzLbl",v=>v+" px");
 $("nozzle").addEventListener("input",syncRing);
 $("criterion").addEventListener("change",resetTree);
 $("dataset").addEventListener("change",generate);
+$("npp").addEventListener("change",generate);
 
 window.addEventListener("resize",()=>{ drawBoard(); drawLoss(); });
 document.addEventListener("keydown",e=>{
